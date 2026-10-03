@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: rollouts-demo}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: webapp-stable, namespace: rollouts-demo}
+spec:
+  selector: {app: webapp}
+  ports: [{name: http, port: 80, targetPort: 8080}]
+# NB : le Service webapp-canary référencé par le Rollout n'existe pas
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata: {name: smoke-test, namespace: rollouts-demo}
+spec:
+  metrics:
+  - name: smoke
+    provider:
+      job:
+        spec:
+          backoffLimit: 0
+          template:
+            spec:
+              restartPolicy: Never
+              containers:
+              - name: curl
+                image: curlimages/curl:8.10.1
+                args: ["-sf", "--max-time", "3", "http://webapp-canary:8080/"]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata: {name: webapp, namespace: rollouts-demo}
+spec:
+  replicas: 4
+  selector: {matchLabels: {app: webapp}}
+  template:
+    metadata: {labels: {app: webapp}}
+    spec:
+      containers:
+      - name: webapp
+        image: argoproj/rollouts-demo:blue
+        ports: [{name: http, containerPort: 8080}]
+  strategy:
+    canary:
+      stableService: webapp-stable
+      canaryService: webapp-canary
+      steps:
+      - setWeight: 25
+      - pause: {}
+      - analysis:
+          templates:
+          - templateName: smoke-test
+      - setWeight: 50
+      - pause: {duration: 10s}

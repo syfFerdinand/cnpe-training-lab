@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: apps-prod}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: ci-deployer, namespace: apps-prod}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: shop, namespace: apps-prod}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: shop}}
+  template:
+    metadata: {labels: {app: shop}}
+    spec:
+      containers: [{name: nginx, image: "nginx:1.27-alpine"}]
+---
+apiVersion: v1
+kind: Secret
+metadata: {name: db-credentials, namespace: apps-prod}
+stringData: {password: s3cr3t}
+---
+# Beaucoup trop large
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: ci-deployer-admin}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin}
+subjects:
+- {kind: ServiceAccount, name: ci-deployer, namespace: apps-prod}
+---
+# alice peut lire les secrets et modifier les workloads : trop large aussi
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: alice-edit, namespace: apps-prod}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: edit}
+subjects:
+- {kind: User, name: alice, apiGroup: rbac.authorization.k8s.io}

@@ -1,0 +1,10 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata: {name: run-1, namespace: ci}
+spec:
+  pipelineRef: {name: build-test-deploy}
+  taskRunTemplate:
+    serviceAccountName: pipeline-sa
+  workspaces:
+  - name: shared
+    emptyDir: {}

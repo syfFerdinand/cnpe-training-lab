@@ -1,0 +1,9 @@
+# À appliquer une fois la CRD (T08) et l'opérateur (T09) réparés
+apiVersion: platform.example.org/v1
+kind: WebApp
+metadata: {name: demo, namespace: team-gamma}
+spec:
+  image: nginx:1.27-alpine
+  replicas: 2
+  port: 80
+  tier: bronze

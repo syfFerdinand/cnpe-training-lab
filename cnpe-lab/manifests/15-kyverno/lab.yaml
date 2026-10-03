@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: policy-demo
+  labels: {governance: enforced}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: legacy, namespace: policy-demo}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: legacy}}
+  template:
+    metadata: {labels: {app: legacy}}
+    spec:
+      containers: [{name: app, image: "nginx:latest"}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ok-app, namespace: policy-demo}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: ok-app}}
+  template:
+    metadata: {labels: {app: ok-app, team: payments}}
+    spec:
+      containers:
+      - name: app
+        image: nginx:1.27-alpine
+        resources: {limits: {memory: 128Mi}}

@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: team-beta}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: frontend, namespace: team-beta}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: frontend}}
+  template:
+    metadata: {labels: {app: frontend}}
+    spec:
+      containers:
+      - {name: curl, image: "curlimages/curl:8.10.1", command: ["sleep", "36000"]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: intruder, namespace: team-beta}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: intruder}}
+  template:
+    metadata: {labels: {app: intruder}}
+    spec:
+      containers:
+      - {name: curl, image: "curlimages/curl:8.10.1", command: ["sleep", "36000"]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: backend, namespace: team-beta}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: backend}}
+  template:
+    metadata: {labels: {app: backend}}
+    spec:
+      containers:
+      - {name: echo, image: "hashicorp/http-echo:1.0", args: ["-text=backend-ok", "-listen=:5678"], ports: [{containerPort: 5678}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: db, namespace: team-beta}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: db}}
+  template:
+    metadata: {labels: {app: db}}
+    spec:
+      containers:
+      - {name: echo, image: "hashicorp/http-echo:1.0", args: ["-text=db-ok", "-listen=:5678"], ports: [{containerPort: 5678}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: backend, namespace: team-beta}
+spec:
+  selector: {app: backend}
+  ports: [{port: 5678, targetPort: 5678}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: db, namespace: team-beta}
+spec:
+  selector: {app: db}
+  ports: [{port: 5678, targetPort: 5678}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny-all, namespace: team-beta}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Tentative existante mais incorrecte (typo dans le label, mauvais port)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-frontend, namespace: team-beta}
+spec:
+  podSelector:
+    matchLabels: {app: backend}
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels: {app: front}
+    ports:
+    - {protocol: TCP, port: 80}

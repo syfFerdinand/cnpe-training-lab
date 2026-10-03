@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: shop-metrics}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: example-app, namespace: shop-metrics}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: example-app}}
+  template:
+    metadata: {labels: {app: example-app}}
+    spec:
+      containers:
+      - name: app
+        image: quay.io/brancz/prometheus-example-app:v0.3.0
+        ports: [{name: web, containerPort: 8080}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: example-app
+  namespace: shop-metrics
+  labels: {app: example-app}
+spec:
+  selector: {app: example-app}
+  ports: [{name: web, port: 8080, targetPort: 8080}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: load, namespace: shop-metrics}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: load}}
+  template:
+    metadata: {labels: {app: load}}
+    spec:
+      containers:
+      - name: curl
+        image: curlimages/curl:8.10.1
+        command: ["sh", "-c", "while true; do curl -s http://example-app:8080/ >/dev/null; curl -s http://example-app:8080/err >/dev/null; sleep 0.5; done"]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: {name: example-app, namespace: shop-metrics}
+spec:
+  selector:
+    matchLabels: {app: example}
+  endpoints:
+  - {port: metrics, interval: 15s}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata: {name: example-alerts, namespace: shop-metrics}
+spec:
+  groups:
+  - name: example-app.rules
+    rules:
+    - alert: HighErrorRatio
+      expr: sum(rate(http_request_total{code!~"2.."}[1m])) / sum(rate(http_request_total[1m])) > 0.2
+      for: 30s
+      labels: {severity: critical}
+      annotations: {summary: "More than 20% of requests fail"}

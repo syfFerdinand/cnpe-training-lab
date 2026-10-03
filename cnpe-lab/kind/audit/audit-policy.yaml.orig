@@ -1,0 +1,18 @@
+# ============================================================
+# TÂCHE 16 - Audit policy (état initial, INCORRECT)
+# Fichier à éditer sur l'hôte : kind/audit/audit-policy.yaml
+# Puis : ./scripts/restart-apiserver.sh
+# ============================================================
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+# Log tout au niveau le plus verbeux pour les secrets et configmaps  (!!)
+- level: RequestResponse
+  resources:
+  - group: ""
+    resources: ["secrets", "configmaps"]
+# Ignorer kube-proxy
+- level: None
+  users: ["system:kube-proxy"]
+# Tout le reste
+- level: Metadata

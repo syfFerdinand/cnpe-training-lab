@@ -1,0 +1,41 @@
+# TÂCHE 17 - Self-service : à la création d'un namespace labellisé, la plateforme provisionne quota + netpol
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata: {name: tenant-bootstrap}
+spec:
+  rules:
+  - name: gen-quota
+    match:
+      any:
+      - resources:
+          kinds: [Namespace]
+          selector:
+            matchLabels: {platform.example.org/tennant: "true"}
+    generate:
+      kind: ResourceQuota
+      name: tenant-quota
+      namespace: "{{request.object.metadata.name}}"
+      synchronize: false
+      data:
+        spec:
+          hard:
+            requests.cpu: "2"
+            requests.memory: 4Gi
+            pods: "20"
+  - name: gen-netpol
+    match:
+      any:
+      - resources:
+          kinds: [Namespace]
+          selector:
+            matchLabels: {platform.example.org/tennant: "true"}
+    generate:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      name: default-deny
+      namespace: "{{request.object.metadata.name}}"
+      synchronize: false
+      data:
+        spec:
+          podSelector: {}
+          policyTypes: [Ingress, Egress]

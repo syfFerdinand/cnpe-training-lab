@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: ci}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: ci-target}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: pipeline-sa, namespace: ci}
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata: {name: run-tests, namespace: ci}
+spec:
+  workspaces:
+  - name: source
+  steps:
+  - name: test
+    image: alpine:3.20
+    script: |
+      #!/bin/sh
+      echo "running tests..."
+      echo ok > $(workspaces.source.path)/tested
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata: {name: deploy-app, namespace: ci}
+spec:
+  params:
+  - {name: app-name, type: string}
+  - {name: image, type: string}
+  - {name: target-namespace, type: string}
+  workspaces:
+  - name: source
+  steps:
+  - name: deploy
+    image: alpine/k8s:1.31.0
+    script: |
+      #!/usr/bin/env bash
+      set -e
+      test -f $(workspaces.source.path)/tested || { echo "tests not run"; exit 1; }
+      kubectl create deployment $(params.app-name) --image=$(params.image) \
+        -n $(params.target-namespace) --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n $(params.target-namespace) rollout status deploy/$(params.app-name) --timeout=90s
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata: {name: build-test-deploy, namespace: ci}
+spec:
+  params:
+  - {name: image, type: string, default: "nginx:1.27-alpine"}
+  - {name: namespace, type: string, default: "ci-target"}
+  workspaces:
+  - name: source
+  tasks:
+  - name: test
+    taskRef: {name: run-tests}
+    workspaces:
+    - {name: source, workspace: source}
+  - name: deploy
+    runAfter: [test]
+    taskRef: {name: deploy-app}
+    params:
+    - {name: app-name, value: hello}
+    - {name: image, value: $(params.image)}
+    - {name: namespace, value: $(params.namespace)}
+    workspaces:
+    - {name: source, workspace: source}

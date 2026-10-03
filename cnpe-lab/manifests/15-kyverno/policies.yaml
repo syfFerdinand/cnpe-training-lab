@@ -1,0 +1,79 @@
+# Appliqué APRÈS les deployments pour que "legacy" existe déjà (déjà admis)
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata: {name: require-team-label}
+spec:
+  background: true
+  rules:
+  - name: check-team
+    match:
+      any:
+      - resources:
+          kinds: [Pod]
+          namespaceSelector:
+            matchLabels: {governance: enfroced}
+    validate:
+      failureAction: Audit
+      message: "label 'team' is required"
+      pattern:
+        metadata:
+          labels:
+            team: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata: {name: disallow-latest-tag}
+spec:
+  background: true
+  rules:
+  - name: no-latest-tag
+    match:
+      any:
+      - resources:
+          kinds: [Pod]
+          namespaceSelector:
+            matchLabels: {governance: enforced}
+    validate:
+      failureAction: Audit
+      message: "the ':latest' tag is not allowed"
+      pattern:
+        spec:
+          containers:
+          - image: "!*:latest"
+  - name: require-image-tag
+    match:
+      any:
+      - resources:
+          kinds: [Pod]
+          namespaceSelector:
+            matchLabels: {governance: enforced}
+    validate:
+      failureAction: Audit
+      message: "an explicit image tag is required"
+      pattern:
+        spec:
+          containers:
+          - image: "*:*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata: {name: require-memory-limit}
+spec:
+  background: true
+  rules:
+  - name: check-limits
+    match:
+      any:
+      - resources:
+          kinds: [Pod]
+          namespaceSelector:
+            matchLabels: {governance: enforced}
+    validate:
+      failureAction: Enforce
+      message: "a memory limit is required"
+      pattern:
+        spec:
+          containers:
+          - resources:
+              limits:
+                memory: "?*"

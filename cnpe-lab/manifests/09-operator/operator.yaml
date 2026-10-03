@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: platform-system}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: team-gamma}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: webapp-operator, namespace: platform-system}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: webapp-operator}
+rules:
+- apiGroups: ["platform.example.org"]
+  resources: ["webapps"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: webapp-operator}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: webapp-operator}
+subjects:
+- {kind: ServiceAccount, name: webapp-operator, namespace: platform-system}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: operator-script, namespace: platform-system}
+data:
+  operator.sh: |
+    #!/usr/bin/env bash
+    # Mini-opérateur : pour chaque WebApp, crée/maintient un Deployment + Service et publie le status.
+    echo "webapp-operator started"
+    while true; do
+      kubectl get webapps.platform.example.org -A -o json | jq -c '.items[]' | while read -r item; do
+        ns=$(jq -r .metadata.namespace <<<"$item")
+        name=$(jq -r .metadata.name <<<"$item")
+        uid=$(jq -r .metadata.uid <<<"$item")
+        image=$(jq -r .spec.image <<<"$item")
+        replicas=$(jq -r '.spec.replicas // 1' <<<"$item")
+        port=$(jq -r '.spec.port // 80' <<<"$item")
+        kubectl apply -f - <<EOF
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: ${name}
+      namespace: ${ns}
+      labels: {app: ${name}, managed-by: webapp-operator}
+      ownerReferences:
+      - {apiVersion: platform.example.org/v1, kind: WebApp, name: ${name}, uid: "${uid}", controller: true}
+    spec:
+      replicas: ${replicas}
+      selector: {matchLabels: {app: ${name}}}
+      template:
+        metadata: {labels: {app: ${name}}}
+        spec:
+          containers:
+          - name: app
+            image: ${image}
+            ports: [{containerPort: ${port}}]
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: ${name}
+      namespace: ${ns}
+      ownerReferences:
+      - {apiVersion: platform.example.org/v1, kind: WebApp, name: ${name}, uid: "${uid}", controller: true}
+    spec:
+      selector: {app: ${name}}
+      ports: [{port: 80, targetPort: ${port}}]
+    EOF
+        ready=$(kubectl -n "$ns" get deploy "$name" -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
+        kubectl -n "$ns" patch webapps.platform.example.org "$name" --subresource=status --type=merge \
+          -p "{\"status\":{\"readyReplicas\":${ready:-0}}}" >/dev/null
+      done
+      sleep 5
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: webapp-operator, namespace: platform-system}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: webapp-operator}}
+  template:
+    metadata: {labels: {app: webapp-operator}}
+    spec:
+      serviceAccountName: default
+      containers:
+      - name: operator
+        image: alpine/k8s:1.31.0
+        command: ["/bin/bash", "/script/operator.sh"]
+        volumeMounts: [{name: script, mountPath: /scripts}]
+      volumes:
+      - name: script
+        configMap: {name: operator-script}

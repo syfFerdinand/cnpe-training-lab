@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: team-data}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: data-pvc, namespace: team-data}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: fast-ssd     # cette StorageClass n'existe pas
+  resources:
+    requests: {storage: 1Gi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: writer, namespace: team-data}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: writer}}
+  template:
+    metadata: {labels: {app: writer}}
+    spec:
+      containers:
+      - name: writer
+        image: busybox:1.36
+        command: ["sh", "-c", "date >> /data/out.txt; sleep 36000"]
+        volumeMounts: [{name: data, mountPath: /data}]
+      volumes:
+      - name: data
+        persistentVolumeClaim: {claimName: data-pvc}

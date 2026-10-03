@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: mesh-demo}     # pas de label d'injection
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: server, namespace: mesh-demo}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: client-ok, namespace: mesh-demo}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: client-bad, namespace: mesh-demo}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: server, namespace: mesh-demo}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: server}}
+  template:
+    metadata: {labels: {app: server}}
+    spec:
+      serviceAccountName: server
+      containers:
+      - {name: echo, image: "hashicorp/http-echo:1.0", args: ["-text=hello-mesh", "-listen=:5678"], ports: [{containerPort: 5678}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: server, namespace: mesh-demo}
+spec:
+  selector: {app: server}
+  ports: [{name: http, port: 5678, targetPort: 5678}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: client-allowed, namespace: mesh-demo}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: client-allowed}}
+  template:
+    metadata: {labels: {app: client-allowed}}
+    spec:
+      serviceAccountName: client-ok
+      containers:
+      - {name: curl, image: "curlimages/curl:8.10.1", command: ["sleep", "36000"]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: client-denied, namespace: mesh-demo}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: client-denied}}
+  template:
+    metadata: {labels: {app: client-denied}}
+    spec:
+      serviceAccountName: client-bad
+      containers:
+      - {name: curl, image: "curlimages/curl:8.10.1", command: ["sleep", "36000"]}
+---
+# PeerAuthentication STRICT posée dans le mauvais namespace
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata: {name: default, namespace: default}
+spec:
+  mtls: {mode: STRICT}
+---
+# AuthorizationPolicy avec un principal mal orthographié
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: {name: server-allow, namespace: mesh-demo}
+spec:
+  selector:
+    matchLabels: {app: server}
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/mesh-demo/sa/client-okay"]
+    to:
+    - operation: {methods: ["GET"]}

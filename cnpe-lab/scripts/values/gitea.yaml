@@ -1,0 +1,31 @@
+gitea:
+  admin:
+    username: gitea_admin
+    password: cnpe-lab-pass
+    email: admin@lab.local
+  config:
+    database:
+      DB_TYPE: sqlite3
+    session:
+      PROVIDER: memory
+    cache:
+      ADAPTER: memory
+    queue:
+      TYPE: level
+postgresql:
+  enabled: false
+postgresql-ha:
+  enabled: false
+redis-cluster:
+  enabled: false
+redis:
+  enabled: false
+valkey-cluster:
+  enabled: false
+valkey:
+  enabled: false
+persistence:
+  enabled: false
+service:
+  http:
+    type: ClusterIP

@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: shop}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: checkout-config, namespace: shop}
+data:
+  DB_HOST: postgres.shop.svc
+  DB_PORT: "5432"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: checkout, namespace: shop}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: checkout}}
+  template:
+    metadata: {labels: {app: checkout}}
+    spec:
+      containers:
+      - name: checkout
+        image: busybox:1.36
+        command: ["sh", "-c", "echo db=$DB_HOST; sleep 36000"]
+        env:
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef: {name: checkout-config, key: db_host}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: cart, namespace: shop}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: cart}}
+  template:
+    metadata: {labels: {app: cart}}
+    spec:
+      containers:
+      - name: cart
+        image: polinux/stress
+        command: ["stress"]
+        args: ["--vm", "1", "--vm-bytes", "64M", "--vm-hang", "0"]
+        resources:
+          limits: {memory: 32Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: frontend, namespace: shop}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: frontend}}
+  template:
+    metadata: {labels: {app: frontend}}
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.27-alpine
+        ports: [{containerPort: 80}]
+        readinessProbe:
+          httpGet: {path: /, port: 8081}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: frontend, namespace: shop}
+spec:
+  selector: {app: front-end}
+  ports: [{port: 80, targetPort: 80}]
