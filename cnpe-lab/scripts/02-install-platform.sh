@@ -3,7 +3,6 @@
 # Désactivation : SKIP_ISTIO=1 SKIP_PROMETHEUS=1 SKIP_TEKTON=1 SKIP_ARGOCD=1 SKIP_ROLLOUTS=1 SKIP_KYVERNO=1 SKIP_GITEA=1
 set -euo pipefail
 LAB_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-kubectl config use-context kind-cnpe >/dev/null
 
 helm repo add kyverno https://kyverno.github.io/kyverno/ >/dev/null
 helm repo add argo https://argoproj.github.io/argo-helm >/dev/null

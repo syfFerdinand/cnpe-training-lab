@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Correcteur du lab CNPE.  Usage : ./scripts/grade.sh [NN ...]   (sans argument : toutes les tâches)
-# Nécessite : kubectl, jq, docker (tâche 16).
+# Nécessite : kubectl, jq, sudo (tâche 16 : lecture du log d'audit).
 set -u
-NODE=${NODE:-cnpe-control-plane}
 SCORE=0; TOTAL=0; _fail=0
 OK=$'\e[32m'; KO=$'\e[31m'; NC=$'\e[0m'
 
@@ -241,7 +240,7 @@ t15(){
 }
 
 # ---------- T16 Audit ----------
-alog(){ docker exec "$NODE" tail -n 3000 /var/log/kubernetes/audit/audit.log; }
+alog(){ sudo tail -n 3000 /var/log/kubernetes/audit/audit.log; }
 t16_secret(){ alog | jq -e --arg n "$S" 'select(.objectRef.resource=="secrets" and .objectRef.name==$n and .verb=="create")|(.level=="Metadata" and (has("requestObject")|not) and (has("responseObject")|not))' | grep -q true; }
 t16_cm(){ alog | jq -e --arg n "$C" 'select(.objectRef.resource=="configmaps" and .objectRef.name==$n and .verb=="create")|(.level=="Metadata" and (has("requestObject")|not))' | grep -q true; }
 t16_role(){ alog | jq -e --arg n "$R" 'select(.objectRef.resource=="roles" and .objectRef.name==$n and .verb=="create")|(.level=="RequestResponse" and has("requestObject"))' | grep -q true; }
@@ -253,7 +252,7 @@ t16(){
   kubectl create configmap "$C" --from-literal=k=v >/dev/null 2>&1
   kubectl create role "$R" --verb=get --resource=pods >/dev/null 2>&1
   sleep 5
-  chk "Fichier de log d'audit présent" docker exec "$NODE" test -s /var/log/kubernetes/audit/audit.log
+  chk "Fichier de log d'audit présent" sudo test -s /var/log/kubernetes/audit/audit.log
   chk "Secrets : niveau Metadata, jamais de body" t16_secret
   chk "ConfigMaps : niveau Metadata" t16_cm
   chk "RBAC (roles) : niveau RequestResponse" t16_role
@@ -291,7 +290,6 @@ declare -A META=(
  [13]="4|Sécurité : mTLS Istio + AuthZ" [14]="3|Sécurité : RBAC" [15]="4|Sécurité : Kyverno admission" [16]="4|Sécurité : audit policy" )
 
 if [ $# -gt 0 ]; then LIST=("$@"); else LIST=(01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17); fi
-kubectl config use-context kind-cnpe >/dev/null 2>&1
 for n in "${LIST[@]}"; do n=$(printf '%02d' "$((10#$n))"); IFS='|' read -r pts title <<<"${META[$n]}"; run_task "$n" "$pts" "$title"; done
 echo; echo "=========================================="
 echo " SCORE : $SCORE / $TOTAL points"

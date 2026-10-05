@@ -4,7 +4,6 @@
 set -uo pipefail
 LAB_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 M="$LAB_DIR/manifests"
-kubectl config use-context kind-cnpe >/dev/null
 have_crd(){ kubectl get crd "$1" >/dev/null 2>&1 || { echo "   (CRD $1 absente : composant non installé, tâche ignorée)"; return 1; }; }
 
 push_repo(){
@@ -37,7 +36,7 @@ load_12(){ kubectl apply -f "$M/12-tracing/lab.yaml"; kubectl apply -f "$M/12-tr
 load_13(){ have_crd authorizationpolicies.security.istio.io || return; kubectl apply -f "$M/13-istio/lab.yaml"; }
 load_14(){ kubectl apply -f "$M/14-rbac/lab.yaml"; }
 load_15(){ have_crd clusterpolicies.kyverno.io || return; kubectl apply -f "$M/15-kyverno/lab.yaml"; sleep 5; kubectl apply -f "$M/15-kyverno/policies.yaml"; }
-load_16(){ cp "$LAB_DIR/kind/audit/audit-policy.yaml.orig" "$LAB_DIR/kind/audit/audit-policy.yaml"; "$LAB_DIR/scripts/restart-apiserver.sh"; }
+load_16(){ sudo cp "$LAB_DIR/kubeadm/audit-policy.yaml.orig" /etc/kubernetes/policies/audit-policy.yaml; "$LAB_DIR/scripts/restart-apiserver.sh"; }
 load_17(){ have_crd clusterpolicies.kyverno.io || return; kubectl apply -f "$M/17-selfservice/policy.yaml"; }
 
 reset_ns(){ kubectl delete ns "$@" --ignore-not-found --wait=true >/dev/null 2>&1; }

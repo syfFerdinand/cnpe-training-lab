@@ -1,0 +1,35 @@
+# Config kubeadm du lab (v1beta4) - les placeholders sont remplacés par 01-cluster.sh
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+nodeRegistration:
+  criSocket: unix:///var/run/containerd/containerd.sock
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+clusterName: cnpe
+kubernetesVersion: __K8S_VERSION__
+networking:
+  podSubnet: __POD_CIDR__
+apiServer:
+  extraArgs:
+  - name: audit-policy-file
+    value: /etc/kubernetes/policies/audit-policy.yaml
+  - name: audit-log-path
+    value: /var/log/kubernetes/audit/audit.log
+  - name: audit-log-maxage
+    value: "1"
+  - name: audit-log-maxbackup
+    value: "2"
+  - name: audit-log-maxsize
+    value: "50"
+  extraVolumes:
+  - name: audit-policies
+    hostPath: /etc/kubernetes/policies
+    mountPath: /etc/kubernetes/policies
+    readOnly: true
+    pathType: DirectoryOrCreate
+  - name: audit-logs
+    hostPath: /var/log/kubernetes/audit
+    mountPath: /var/log/kubernetes/audit
+    readOnly: false
+    pathType: DirectoryOrCreate

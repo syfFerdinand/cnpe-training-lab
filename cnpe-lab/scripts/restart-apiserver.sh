@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Force le kube-apiserver (static pod) à relire l'audit policy.
-# Dans l'examen : sudo mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/ ; attendre ; le remettre.
+# Force le kube-apiserver (static pod) à relire l'audit policy. (Même geste que sur le noeud d'examen.)
 set -euo pipefail
-NODE=${NODE:-cnpe-control-plane}
-docker exec "$NODE" bash -c 'mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/ && sleep 20 && mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/'
-echo "Attente de l'apiserver..."
+sudo mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/
+echo "apiserver arrêté, attente 20s..."; sleep 20
+sudo mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/
 sleep 10
 until kubectl get --raw /readyz >/dev/null 2>&1; do sleep 3; done
 echo "apiserver prêt"

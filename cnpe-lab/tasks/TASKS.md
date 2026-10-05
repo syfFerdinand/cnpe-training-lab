@@ -1,7 +1,7 @@
 # CNPE Lab – Énoncés des tâches
 
 Format examen : contexte en **français** (pour toi), consigne en **anglais** (comme le jour J).
-Contexte machine : `kubectl config use-context kind-cnpe` (un seul cluster, tu es admin). Alias conseillé : `alias k=kubectl`.
+Contexte machine : tu travailles directement sur le noeud control-plane kubeadm (équivalent du `ssh <host>` de l'exam), kubeconfig admin déjà en place, `sudo -i` autorisé. Alias conseillé : `alias k=kubectl`.
 Documentation autorisée pendant l'entraînement : kubernetes.io/docs et kubernetes.io/blog uniquement, + la doc de l'outil concerné
 quand elle est citée dans "Quick Reference" (à l'examen, ces liens sont fournis dans l'énoncé).
 Chrono : 2h pour 15-20 tâches, soit ~6 min/tâche. Ici 17 tâches : vise 2h15 maximum en tout.
@@ -130,11 +130,11 @@ pods without label `team`, containers without memory limit. Then bring Deploymen
 Quick Reference : https://kyverno.io/docs/writing-policies/validate/
 
 ## T16 – Audit policy (4 pts)
-**Contexte** : l'audit est activé sur l'apiserver mais la policy est dangereuse (secrets loggés en clair). Fichier : `kind/audit/audit-policy.yaml` (hôte).
-Sur un vrai noeud, ce serait `/etc/kubernetes/policies/audit-policy.yaml`.
+**Contexte** : l'audit est activé sur l'apiserver (flags dans le manifest static pod) mais la policy est dangereuse (secrets loggés en clair).
+Fichier à éditer : `/etc/kubernetes/policies/audit-policy.yaml` (sudo). Log : `/var/log/kubernetes/audit/audit.log`.
 **Task** : Rewrite the audit policy (first match wins): `secrets`, `configmaps` and `tokenreviews` at **Metadata** level only; RBAC resources (roles, rolebindings, clusterroles, clusterrolebindings)
 at **RequestResponse**; drop `/healthz*`, `/livez*`, `/readyz*`, `/version` non-resource URLs (level None); omit stage `RequestReceived` globally; everything else Metadata.
-Then restart the API server (`./scripts/restart-apiserver.sh`).
+Then restart the API server so the new policy is loaded (static pod: move `/etc/kubernetes/manifests/kube-apiserver.yaml` out and back, or use `./scripts/restart-apiserver.sh`).
 Quick Reference : https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/
 
 ## T17 – Self-service tenant (7 pts)

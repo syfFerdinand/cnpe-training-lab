@@ -1,7 +1,7 @@
 # ============================================================
 # TÂCHE 16 - Audit policy (état initial, INCORRECT)
-# Fichier à éditer sur l'hôte : kind/audit/audit-policy.yaml
-# Puis : ./scripts/restart-apiserver.sh
+# Fichier LIVE à éditer sur le noeud : /etc/kubernetes/policies/audit-policy.yaml  (sudo)
+# Puis : sudo ./scripts/restart-apiserver.sh
 # ============================================================
 apiVersion: audit.k8s.io/v1
 kind: Policy
