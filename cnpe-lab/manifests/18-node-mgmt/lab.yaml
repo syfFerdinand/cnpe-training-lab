@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ha-scheduling
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-ha
+  namespace: ha-scheduling
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web-ha
+  template:
+    metadata:
+      labels:
+        app: web-ha
+    spec:
+      # Bug 1: nodeSelector force les pods sur un label inexistant ou un seul noeud
+      nodeSelector:
+        disktype: ssd-nonexistent
+      containers:
+      - name: nginx
+        image: nginx:1.27-alpine
+        ports:
+        - containerPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maintenance-app
+  namespace: ha-scheduling
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: maintenance-app
+  template:
+    metadata:
+      labels:
+        app: maintenance-app
+    spec:
+      # Bug 2: pas de toleration pour control-plane si node01 est drained/tainted,
+      # ou forcé sur node01 alors qu'on va drainer node01
+      nodeName: node01
+      containers:
+      - name: app
+        image: nginx:1.27-alpine

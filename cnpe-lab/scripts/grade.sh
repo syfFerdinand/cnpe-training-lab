@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Correcteur du lab CNPE.  Usage : ./scripts/grade.sh [NN ...]   (sans argument : toutes les tâches)
-# Nécessite : kubectl, jq, sudo (tâche 16 : lecture du log d'audit).
+# Correcteur du lab CNPE (Killercoda 2 Nodes).
+# Usage :
+#   ./scripts/grade.sh <infra|gitops|platform|observability|security>
+#   ./scripts/grade.sh [NN ...]
 set -u
 SCORE=0; TOTAL=0; _fail=0
 OK=$'\e[32m'; KO=$'\e[31m'; NC=$'\e[0m'
@@ -57,7 +59,6 @@ t04(){
 }
 
 # ---------- T05 Argo CD ----------
-t05_a(){ kubectl -n argocd get app webapp-prod -o json; }
 t05(){
   chkw "Application Synced" 120 bash -c "kubectl -n argocd get app webapp-prod -o jsonpath='{.status.sync.status}' | grep -q Synced"
   chkw "Application Healthy" 120 bash -c "kubectl -n argocd get app webapp-prod -o jsonpath='{.status.health.status}' | grep -q Healthy"
@@ -240,7 +241,7 @@ t15(){
 }
 
 # ---------- T16 Audit ----------
-alog(){ sudo tail -n 3000 /var/log/kubernetes/audit/audit.log; }
+alog(){ tail -n 3000 /var/log/kubernetes/audit/audit.log; }
 t16_secret(){ alog | jq -e --arg n "$S" 'select(.objectRef.resource=="secrets" and .objectRef.name==$n and .verb=="create")|(.level=="Metadata" and (has("requestObject")|not) and (has("responseObject")|not))' | grep -q true; }
 t16_cm(){ alog | jq -e --arg n "$C" 'select(.objectRef.resource=="configmaps" and .objectRef.name==$n and .verb=="create")|(.level=="Metadata" and (has("requestObject")|not))' | grep -q true; }
 t16_role(){ alog | jq -e --arg n "$R" 'select(.objectRef.resource=="roles" and .objectRef.name==$n and .verb=="create")|(.level=="RequestResponse" and has("requestObject"))' | grep -q true; }
@@ -252,7 +253,7 @@ t16(){
   kubectl create configmap "$C" --from-literal=k=v >/dev/null 2>&1
   kubectl create role "$R" --verb=get --resource=pods >/dev/null 2>&1
   sleep 5
-  chk "Fichier de log d'audit présent" sudo test -s /var/log/kubernetes/audit/audit.log
+  chk "Fichier de log d'audit présent" test -s /var/log/kubernetes/audit/audit.log
   chk "Secrets : niveau Metadata, jamais de body" t16_secret
   chk "ConfigMaps : niveau Metadata" t16_cm
   chk "RBAC (roles) : niveau RequestResponse" t16_role
@@ -266,7 +267,6 @@ t17_sync(){ kubectl get cpol tenant-bootstrap -o json | jq -e '[.spec.rules[].ge
 t17(){
   chk "ClusterPolicy tenant-bootstrap : synchronize=true partout" t17_sync
   kubectl delete ns tenant-x --ignore-not-found --wait=true >/dev/null 2>&1
-  # generate se déclenche à la création du namespace : on le crée directement avec le label
   kubectl apply -f - >/dev/null 2>&1 <<EOF
 apiVersion: v1
 kind: Namespace
@@ -279,6 +279,65 @@ EOF
   kubectl delete ns tenant-x --wait=false >/dev/null 2>&1
 }
 
+# ---------- T18 Node Management & HA Scheduling ----------
+t18_sched(){ [ "$(kubectl get node node01 -o jsonpath='{.spec.unschedulable}')" != "true" ]; }
+t18_anti(){ kubectl -n ha-scheduling get deploy web-ha -o json | jq -e '.spec.template.spec.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].topologyKey=="kubernetes.io/hostname"'; }
+t18_nodes(){ [ "$(kubectl -n ha-scheduling get pods -l app=web-ha -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | sort -u | wc -l)" -ge 2 ]; }
+t18_maint(){ [ -z "$(kubectl -n ha-scheduling get deploy maintenance-app -o jsonpath='{.spec.template.spec.nodeName}')" ] && [ "$(kubectl -n ha-scheduling get deploy maintenance-app -o jsonpath='{.status.readyReplicas}')" = 2 ]; }
+t18(){
+  chk "node01 est schedulable (uncordon)" t18_sched
+  chk "web-ha : podAntiAffinity (kubernetes.io/hostname)" t18_anti
+  chkw "web-ha : 2 replicas prêts sur 2 nœuds distincts" 90 t18_nodes
+  chkw "maintenance-app : plus de nodeName manuel et 2 replicas prêts" 90 t18_maint
+}
+
+# ---------- T19 Etcd Snapshot ----------
+t19_snap(){ test -s /tmp/etcd-backup.db && ETCDCTL_API=3 etcdctl snapshot status /tmp/etcd-backup.db >/dev/null 2>&1; }
+t19_cm(){ [ "$(kubectl -n etcd-lab get cm critical-data -o jsonpath='{.data.secret-code}' 2>/dev/null)" = "cnpe-2026-ok" ]; }
+t19(){
+  chk "Snapshot /tmp/etcd-backup.db présent et valide" t19_snap
+  chk "ConfigMap critical-data intact dans etcd-lab" t19_cm
+}
+
+# ---------- T20 ValidatingAdmissionPolicy ----------
+vap_pod(){
+  cat <<EOF | kubectl apply --dry-run=server -f - >/dev/null 2>&1
+apiVersion: v1
+kind: Pod
+metadata: {name: vap-probe, namespace: $1}
+spec:
+  hostNetwork: $2
+  containers:
+  - name: c
+    image: nginx:1.27-alpine
+    securityContext: {privileged: $3}
+EOF
+}
+t20_bind(){ kubectl get validatingadmissionpolicybinding deny-privileged-binding -o json | jq -e '(.spec.validationActions|index("Deny")) and (.spec.matchResources.namespaceSelector.matchLabels["vap-enforced"]=="true")'; }
+t20(){
+  chk "Binding : validationActions=Deny et namespaceSelector vap-enforced=true" t20_bind
+  chk "Refus dans vap-demo : privileged=true" not vap_pod vap-demo false true
+  chk "Refus dans vap-demo : hostNetwork=true" not vap_pod vap-demo true false
+  chk "Accepté dans vap-demo : pod conforme" vap_pod vap-demo false false
+  chk "Accepté hors scope (namespace default)" vap_pod default false true
+}
+
+# ---------- T21 Cluster & Workload Chaos ----------
+t21_sched(){ kubectl -n kube-system get pod kube-scheduler-controlplane -o json | jq -e '.status.phase=="Running" and (.status.containerStatuses[0].ready==true)'; }
+t21_ep(){ kubectl -n chaos-ops get endpointslices -l kubernetes.io/service-name=payment-api -o json | jq -e '[.items[].endpoints[]?|select(.conditions.ready==true)]|length>=2'; }
+t21(){
+  chkw "kube-scheduler-controlplane Running et Ready" 60 t21_sched
+  chkw "Deployment payment-api : 2/2 replicas prêts" 90 bash -c "[ \"\$(kubectl -n chaos-ops get deploy payment-api -o jsonpath='{.status.readyReplicas}')\" = 2 ]"
+  chkw "Service payment-api a des endpoints prêts" 60 t21_ep
+}
+
+# ---------- T22 Pod Security Standards ----------
+t22_ns(){ [ "$(kubectl get ns secure-apps -o jsonpath='{.metadata.labels.pod-security\.kubernetes\.io/enforce}')" = "restricted" ]; }
+t22(){
+  chk "Namespace secure-apps : pod-security.kubernetes.io/enforce=restricted" t22_ns
+  chkw "Deployment hardened-web : 1/1 replica prêt et conforme" 90 bash -c "[ \"\$(kubectl -n secure-apps get deploy hardened-web -o jsonpath='{.status.readyReplicas}')\" = 1 ]"
+}
+
 run_task(){ local n=$1 pts=$2 title=$3; echo; echo "== T$n ($pts pts) $title"; _fail=0; "t$n"
   TOTAL=$((TOTAL+pts)); if [ $_fail = 0 ]; then SCORE=$((SCORE+pts)); echo "   => ${OK}OK${NC}"; else echo "   => ${KO}à corriger${NC}"; fi; }
 
@@ -287,9 +346,26 @@ declare -A META=(
  [05]="9|GitOps : Argo CD" [06]="8|CI/CD : Tekton" [07]="8|Progressive delivery : Argo Rollouts"
  [08]="9|CRD" [09]="9|Opérateur" [17]="7|Self-service : Kyverno generate"
  [10]="7|Monitoring : ServiceMonitor / PrometheusRule" [11]="7|Incident : diagnostic" [12]="6|Tracing : OTel Collector + Jaeger"
- [13]="4|Sécurité : mTLS Istio + AuthZ" [14]="3|Sécurité : RBAC" [15]="4|Sécurité : Kyverno admission" [16]="4|Sécurité : audit policy" )
+ [13]="4|Sécurité : mTLS Istio + AuthZ" [14]="3|Sécurité : RBAC" [15]="4|Sécurité : Kyverno admission" [16]="4|Sécurité : audit policy"
+ [18]="5|Node Management & HA Scheduling" [19]="6|Etcd Snapshot & Restore" [20]="6|ValidatingAdmissionPolicy (CEL)"
+ [21]="6|Cluster & Workload Chaos" [22]="5|Pod Security Standards (restricted)" )
 
-if [ $# -gt 0 ]; then LIST=("$@"); else LIST=(01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17); fi
+declare -A SESSIONS=(
+  [infra]="01 02 03 04 18 19"
+  [gitops]="05 06 07"
+  [platform]="08 09 17 20"
+  [observability]="10 11 12 21"
+  [security]="13 14 15 16 22"
+)
+
+if [ $# -eq 1 ] && [[ -n "${SESSIONS[$1]:-}" ]]; then
+  read -ra LIST <<<"${SESSIONS[$1]}"
+elif [ $# -gt 0 ]; then
+  LIST=("$@")
+else
+  LIST=(01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22)
+fi
+
 for n in "${LIST[@]}"; do n=$(printf '%02d' "$((10#$n))"); IFS='|' read -r pts title <<<"${META[$n]}"; run_task "$n" "$pts" "$title"; done
 echo; echo "=========================================="
 echo " SCORE : $SCORE / $TOTAL points"

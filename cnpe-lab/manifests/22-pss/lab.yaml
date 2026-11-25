@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: secure-apps
+  # Bug 1: manque les labels Pod Security Standards (enforce: restricted)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hardened-web
+  namespace: secure-apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hardened-web
+  template:
+    metadata:
+      labels:
+        app: hardened-web
+    spec:
+      # Bug 2: ne respecte pas le profil PSS restricted
+      containers:
+      - name: web
+        image: nginxinc/nginx-unprivileged:1.27-alpine
+        ports:
+        - containerPort: 8080
+        securityContext:
+          allowPrivilegeEscalation: true
+          runAsNonRoot: false

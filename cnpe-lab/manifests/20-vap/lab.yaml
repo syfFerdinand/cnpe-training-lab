@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vap-demo
+  labels:
+    vap-enforced: "true"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: deny-privileged-and-hostnetwork
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["pods"]
+  validations:
+  # Bug 1: expression CEL inversée ou incomplète (autorise privileged: true au lieu de le bloquer)
+  - expression: "true"
+    message: "Privileged containers are not allowed"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: deny-privileged-binding
+spec:
+  policyName: deny-privileged-and-hostnetwork
+  # Bug 2: validationActions est Audit au lieu de Deny, et pas de matchResources sur namespaceSelector vap-enforced=true
+  validationActions: [Audit]
