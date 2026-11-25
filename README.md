@@ -10,7 +10,7 @@ Pour respecter la limite mémoire de Killercoda tout en restant fidèle aux 5 do
 1. Ouvre le playground **Kubernetes 2 Nodes** sur Killercoda.
 2. Clone ce dépôt sur le nœud `controlplane` :
    ```bash
-   git clone <URL_DU_REPO> ~/cnpe-lab && cd ~/cnpe-lab/cnpe-lab
+   git clone <URL_DU_REPO|https://github.com/syfFerdinand/cnpe-training-lab.git> ~/cnpe-lab && git switch killercoda && cd ~/cnpe-lab/cnpe-lab
    ```
 3. Lance la session de ton choix (installe Calico, `local-path`, `metrics-server`, les outils de la session et injecte les pannes) :
    ```bash
